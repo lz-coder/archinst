@@ -3,6 +3,9 @@
 # the disk used to install
 DISK="/dev/nvme0n1"
 
+EFI_PART="/dev/nvme0n1p1"
+SYSTEM_PART="/dev/nvme0n1p2"
+
 # the user name
 USER_NAME="lzcoder"
 
@@ -15,9 +18,6 @@ echo "partition 2 is for SYSTEM"
 sgdisk -n1:0:+1G -t1:ef00 -c1:EFI -N2 -t2:8304 -c2:SYSTEM $DISK
 partprobe -s $DISK
 echo
-
-EFI_PART="/dev/nvme0n1p1"
-SYSTEM_PART="/dev/nvme0n1p2"
 
 echo "encrypting the disk"
 cryptsetup luksFormat $DISK
@@ -60,7 +60,7 @@ mount -o subvol=@home $SYSTEM_MAPPER /mnt/home
 mount -o subvol=@snapshots $SYSTEM_MAPPER /mnt/.snapshots
 mount -o subvol=@srv $SYSTEM_MAPPER /mnt/srv
 mount -o subvol=@cache $SYSTEM_MAPPER /mnt/var/cache
-mount -o subvol=@log $SYSTEM_MAPPER /mnt/log
+mount -o subvol=@log $SYSTEM_MAPPER /mnt/var/log
 mount $EFI_PART /mnt/efi
 echo
 
