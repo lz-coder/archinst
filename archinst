@@ -24,7 +24,7 @@ cryptsetup luksFormat $DISK
 echo
 
 echo "opening the encrypted disk"
-cryptsetup open $DISK system
+cryptsetup open $SYSTEM_PART system
 echo
 
 SYSTEM_MAPPER="/dev/mapper/system"
