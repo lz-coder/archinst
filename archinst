@@ -1,0 +1,91 @@
+#!/bin/sh
+
+# the disk used to install
+DISK="/dev/nvme0n1"
+
+# the user name
+USER_NAME="lzcoder"
+
+echo "running sgdisk --zap-all on $DISK"
+sgdisk -Z $DISK
+
+echo "partitioning disk: $DISK"
+echo "partition 1 is EFI"
+echo "partition 2 is for SYSTEM"
+sgdisk -n1:0:+1G -t1:ef00 -c1:EFI -N2 -t2:8304 -c2:SYSTEM $DISK
+partprobe -s $DISK
+echo
+
+EFI_PART="/dev/nvme0n1p1"
+SYSTEM_PART="/dev/nvme0n1p2"
+
+echo "encrypting the disk"
+cryptsetup luksFormat $DISK
+echo
+
+echo "opening the encrypted disk"
+cryptsetup open $DISK system
+echo
+
+SYSTEM_MAPPER="/dev/mapper/system"
+
+echo "formating the partitions"
+echo "partition 1 is FAT32"
+mkfs.vfat -F32 -n EFI $EFI_PART
+echo "partition 2 is BTRFS"
+mkfs.btrfs -f -L SYSTEM $SYSTEM_MAPPER
+echo
+
+echo "creating top level subvolumes"
+mount $SYSTEM_MAPPER /mnt
+echo "subvol root: @"
+btrfs subvol create /mnt/@
+echo "subvol home: @home"
+btrfs subvol create /mnt/@home
+echo "subvol snapshots: @snapshots"
+btrfs subvol create /mnt/@snapshots
+echo "subvol srv: @srv"
+btrfs subvol create /mnt/@srv
+echo "subvol cache: @cache"
+btrfs subvol create /mnt/@cache
+echo "subvol log: @log"
+btrfs subvol create /mnt/@log
+umount /mnt
+echo
+
+echo "mount subvolumes and EFI partition"
+mount -o subvol=@ $SYSTEM_MAPPER /mnt
+mkdir -p /mnt/{home,.snapshots,srv,var/cache,var/log,efi}
+mount -o subvol=@home $SYSTEM_MAPPER /mnt/home
+mount -o subvol=@snapshots $SYSTEM_MAPPER /mnt/.snapshots
+mount -o subvol=@srv $SYSTEM_MAPPER /mnt/srv
+mount -o subvol=@cache $SYSTEM_MAPPER /mnt/var/cache
+mount -o subvol=@log $SYSTEM_MAPPER /mnt/log
+mount $EFI_PART /mnt/efi
+echo
+
+echo "bootstrapping base system"
+reflector --country BR --age 24 --protocol http,https --sort rate  --save /etc/pacman.d/mirrorlist
+pacstrap -K /mnt base base-devel linux linux-firmware amd-ucode helix cryptsetup btrfs-progs dosfstools util-linux sbctl iwd sudo
+echo "generationg fstab"
+genfstab -U /mnt >> /mnt/etc/fstab
+echo
+echo "setting localization"
+sed -i -e "/^#"en_US.UTF-8"/s/^#//" /mnt/etc/locale.gen
+sed -i -e "/^#"pt_BR.UTF-8"/s/^#//" /mnt/etc/locale.gen
+arch-chroot /mnt locale-gen
+echo
+echo "configuring locale and root password stuff"
+systemd-firstboot --root /mnt --prompt
+
+echo "creating user"
+arch-chroot /mnt useradd -G wheel -m $USER_NAME
+arch-chroot /mnt passwd $USER_NAME
+sed -i -e '/^# %wheel ALL=(ALL:ALL) ALL/s/^# //' /mnt/etc/sudoers
+
+echo "UKI settings"
+echo "rootflags=subvol=root quiet rw" >> /mnt/etc/kernel/cmdline
+mkdir -p /mnt/efi/EFI/Linux
+echo 
+
+echo "NOW YOU HAVE TO CONFIGURE THE mkinitcpio for systemd and the linux.preset"
